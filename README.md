@@ -52,9 +52,11 @@ $> make
 ```
 
 # Run
+$> ./olSpeechDetection [model] [wav file] 
 $> ./olSpeechDetection ../model/segment.onnx ../data/multi-speaker_4-speakers_Jennifer_Aniston_and_Adam_Sandler_talk.wav
 
 # Result
+Note: this result is not consistent, still debugging.
 <pre>
 [ 1.51024 --> 2.36348 ]
 [ 8.18259 --> 11.3908 ]
