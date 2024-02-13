@@ -1,15 +1,13 @@
-# speaker_diarization_prototype
+# Pyannote Audio Overlapped Speech Detection
 
-Convert pyannote-audio's speaker diarization pipeline to C++.
+Convert pyannote-audio's overlapped speech detection pipeline to C++.
 
 Whole pipeline is splitted into 3 stages,
 - segment
-- embedding
 - clustering
 
-For segment and embedding part,
+For segment,
 1. export embedding and segmentation model,
-2. convert pre-embedding, post-embedding, pre-segment, post-segment.
 
 For clustering, convert all python code to C++ code.
 
@@ -17,18 +15,13 @@ For clustering, convert all python code to C++ code.
 
 ## Export model
 - segmenation
-segment/export2.py
-
-- embedding
-embeddings/export3.py
+segment/export3.py
 
 Create conda evironment
 ```
 $> conda create --name sd_embeddings
 $> conda activate sd_embeddings
 $> cd segment
-$> python export2.py
-$> cd embedding
 $> python export3.py
 ```
 
@@ -59,7 +52,92 @@ $> make
 ```
 
 # Run
-./speakerDiarizer ../../segment/segment2.onnx ../../embeddings/emd4.onnx ~/storage/sharedFolderVirtualbox/audioForTesting/english_15s16k.wav
+$> ./olSpeechDetection ../model/segment.onnx ../data/multi-speaker_4-speakers_Jennifer_Aniston_and_Adam_Sandler_talk.wav
+
+# Result
+[ 1.51024 --> 2.36348 ]
+[ 8.18259 --> 11.3908 ]
+[ 20.0939 --> 22.6195 ]
+[ 23.5751 --> 28.6604 ]
+[ 30.2304 --> 32.227 ]
+[ 33.4556 --> 45.93 ]
+[ 48.3703 --> 48.558 ]
+[ 50.3328 --> 54.616 ]
+[ 64.6331 --> 65.1621 ]
+[ 68.1997 --> 69.3771 ]
+[ 69.7696 --> 71.0495 ]
+[ 78.7457 --> 79.4795 ]
+[ 82.0904 --> 83.1314 ]
+[ 89.8379 --> 90.5887 ]
+[ 93.2679 --> 93.7628 ]
+[ 94.8208 --> 97.6365 ]
+[ 98.1826 --> 107.022 ]
+[ 107.688 --> 108.302 ]
+[ 111.374 --> 112.773 ]
+[ 116.63 --> 116.954 ]
+[ 120.23 --> 122.551 ]
+[ 124.411 --> 124.735 ]
+[ 131.408 --> 132.5 ]
+[ 135.862 --> 138.456 ]
+[ 140.026 --> 140.896 ]
+[ 144.343 --> 144.735 ]
+[ 147.773 --> 150.179 ]
+[ 151.34 --> 152.841 ]
+[ 154.07 --> 158.302 ]
+[ 160.179 --> 160.862 ]
+[ 170.913 --> 171.169 ]
+[ 171.954 --> 173.78 ]
+[ 175.452 --> 177.176 ]
+[ 178.285 --> 182.022 ]
+[ 189.121 --> 196.152 ]
+[ 201.152 --> 202.073 ]
+[ 202.432 --> 204.428 ]
+[ 205.981 --> 208.422 ]
+[ 219.002 --> 219.565 ]
+[ 221.015 --> 224.735 ]
+[ 225.35 --> 226.544 ]
+[ 228.968 --> 232.5 ]
+[ 233.933 --> 234.855 ]
+[ 237.329 --> 239.514 ]
+[ 242.227 --> 244.531 ]
+[ 245.367 --> 248.319 ]
+[ 252.432 --> 254.189 ]
+[ 255.026 --> 261.561 ]
+[ 262.227 --> 263.183 ]
+[ 264.104 --> 272.892 ]
+[ 277.312 --> 278.063 ]
+[ 279.292 --> 281.613 ]
+[ 283.439 --> 283.933 ]
+[ 292.159 --> 298.933 ]
+[ 299.855 --> 300.555 ]
+[ 302.176 --> 303.097 ]
+[ 303.814 --> 304.548 ]
+[ 306.544 --> 306.852 ]
+[ 309.736 --> 316.51 ]
+[ 317.5 --> 325.879 ]
+[ 330.401 --> 331.578 ]
+[ 332.875 --> 333.882 ]
+[ 335.947 --> 345.947 ]
+[ 346.22 --> 348.148 ]
+[ 349.531 --> 352.125 ]
+[ 352.722 --> 355.196 ]
+[ 355.964 --> 357.824 ]
+[ 362.892 --> 363.831 ]
+[ 367.602 --> 368.78 ]
+[ 371.493 --> 372.483 ]
+[ 379.019 --> 379.77 ]
+[ 385.282 --> 390.247 ]
+[ 390.794 --> 392.602 ]
+[ 398.012 --> 399.872 ]
+[ 401.135 --> 401.852 ]
+[ 402.824 --> 405.282 ]
+[ 406.647 --> 408.592 ]
+[ 420.094 --> 431.135 ]
+[ 434.206 --> 434.65 ]
+[ 437.79 --> 440.179 ]
+[ 445.094 --> 445.742 ]
+[ 447.176 --> 447.927 ]
+
 
 # onnxruntime to GPU
 It seems no need change code, instead set cuda when convert to model. For segment.onnx model, change source 
@@ -85,27 +163,8 @@ Above command is to compare txt files generated /tmp. and command below is to de
 $> python verifyEveryStepResult.py clean
 ```
 
+# Thanks
 
-# For hierichical clustering
-tried following
-- hclust-cpp/fastcluster
-https://github.com/cdalitz/hclust-cpp
-result is wrong, including distance of clusters and result 'fcluster'
-
-- agglomerative-hierarchical-clustering
-https://github.com/gyaikhom/agglomerative-hierarchical-clustering/tree/master
-centroid_linkage is empty
-
-- alglib
-https://www.alglib.net/dataanalysis/clustering.php
-does not support centriod
-
-python code used is,
-/home/leo/product/speaker_diarization/diarization/lib/python3.10/site-packages/pyannote
-
-There is a lot code added. Search "LIYI" by command grep to find them
-
-- k-means library
-https://github.com/aditya1601/kmeans-clustering-cpp
-
+- [pyannote-audio](https://github.com/pyannote/pyannote-audio)
+- [pyannote-onnx](https://github.com/pengzhendong/pyannote-onnx)
 
