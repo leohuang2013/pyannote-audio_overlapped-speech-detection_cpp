@@ -2,14 +2,14 @@
 
 Convert pyannote-audio's overlapped speech detection pipeline to C++.
 
-Whole pipeline is splitted into 3 stages,
+Whole pipeline is splitted into 2 stages,
 - segment
-- clustering
+- binarize
 
 For segment,
 1. export embedding and segmentation model,
 
-For clustering, convert all python code to C++ code.
+For binarize part, convert all python code to C++ code.
 
 # Model 
 
@@ -55,6 +55,7 @@ $> make
 $> ./olSpeechDetection ../model/segment.onnx ../data/multi-speaker_4-speakers_Jennifer_Aniston_and_Adam_Sandler_talk.wav
 
 # Result
+<pre>
 [ 1.51024 --> 2.36348 ]
 [ 8.18259 --> 11.3908 ]
 [ 20.0939 --> 22.6195 ]
@@ -137,7 +138,7 @@ $> ./olSpeechDetection ../model/segment.onnx ../data/multi-speaker_4-speakers_Je
 [ 437.79 --> 440.179 ]
 [ 445.094 --> 445.742 ]
 [ 447.176 --> 447.927 ]
-
+</pre>
 
 # onnxruntime to GPU
 It seems no need change code, instead set cuda when convert to model. For segment.onnx model, change source 
