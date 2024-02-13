@@ -52,14 +52,17 @@ $> make
 ```
 
 # Run
+```
 $> ./olSpeechDetection [model] [wav file] 
 $> ./olSpeechDetection ../model/segment.onnx ../data/multi-speaker_4-speakers_Jennifer_Aniston_and_Adam_Sandler_talk.wav
+```
 
 # Result
 Note: this result is not consistent, still debugging.
 <table>
-<th><td>Our Output</td><td>Pyannote Output</td></tr>
+<tr><th>Our Output</th><th>Pyannote Output</th></tr>
 <tr><td>
+<pre>
 [ 00:00:01.834 --> 00:00:02.022 ]
 [ 00:00:10.571 --> 00:00:11.186 ]
 [ 00:00:20.315 --> 00:00:21.117 ]
@@ -122,7 +125,9 @@ Note: this result is not consistent, still debugging.
 [ 00:07:10.571 --> 00:07:10.930 ]
 [ 00:07:19.462 --> 00:07:19.889 ]
 [ 00:07:25.230 --> 00:07:25.503 ]
+</pre>
 </td><td>
+<pre>
 [ 00:00:01.834 -->  00:00:02.022]
 [ 00:00:10.571 -->  00:00:11.186]
 [ 00:00:20.315 -->  00:00:21.117]
@@ -185,6 +190,7 @@ Note: this result is not consistent, still debugging.
 [ 00:07:10.571 -->  00:07:10.930]
 [ 00:07:19.462 -->  00:07:19.889]
 [ 00:07:25.230 -->  00:07:25.503]
+</pre>
 </td></tr>
 </table>
 </pre>
