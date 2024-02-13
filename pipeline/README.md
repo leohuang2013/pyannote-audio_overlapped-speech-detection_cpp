@@ -43,41 +43,5 @@ $> python verifyEveryStepResult.py clean
 ```
 
 # Performance issue
-Most time spent on embedding,
------------
-Segmenations time: 1061ms
------------
-Embedding time: 62759ms
------------
-Clustering time: 5ms
-----Summary----
-Time cost: 63869ms
-
-and in embedding process, most time spent on STFT
-----------------------------------------------------
-STFT time: 31991ms
-input shape:32x501x201x2
-output shape:32x1x192
-----------------------------------------------------
-Embedding time: 2874ms
-----------------------------------------------------
-STFT time: 31033ms
-input shape:32x501x201x2
-output shape:32x1x192
-----------------------------------------------------
-Embedding time: 1579ms
 
 
-# For hierichical clustering
-tried following
-- hclust-cpp/fastcluster
-https://github.com/cdalitz/hclust-cpp
-result is wrong, including distance of clusters and result 'fcluster'
-
-- agglomerative-hierarchical-clustering
-https://github.com/gyaikhom/agglomerative-hierarchical-clustering/tree/master
-centroid_linkage is empty
-
-- alglib
-https://www.alglib.net/dataanalysis/clustering.php
-does not support centriod

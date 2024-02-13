@@ -1270,7 +1270,7 @@ public:
                 {
                     // score * mask * hamming_window * warm_up_window
                     aggregated_output[_j][k] += scores[i][j][k] * masks[i][j][k] * hamming_window[j][k];
-                    overlapping_chunk_count[_j][k] += masks[i][j][k];
+                    overlapping_chunk_count[_j][k] += masks[i][j][k] * hamming_window[j][k];
                     if( masks[i][j][k] > aggregated_mask[_j][k] )
                     {
                         aggregated_mask[_j][k] = masks[i][j][k];
@@ -2362,7 +2362,7 @@ Annotation detectOverlappedSpeech( const std::string& waveFile, const std::strin
             res_frames, 
             pre_frame, 
             activations_frames, 
-            true, 0.0, true );
+            true, 0.0, false );
 #ifdef WRITE_DATA
     debugWrite2d( activations, "cpp_after_aggregate" );
 #endif // WRITE_DATA
@@ -2448,6 +2448,24 @@ void test()
 
 }
 
+std::stringstream toHHMMSS( float ms ) 
+{
+
+    std::stringstream os;
+    int h = ms / (60 * 60);
+    ms -= h * (60 * 60);
+
+    int m = ms / (60);
+    ms -= m * (60);
+
+    int s = ms;
+    ms -= s;
+    int n = ms * 1000;
+
+    os << std::setfill('0') << std::setw(2) << h << ':' << std::setw(2) << m
+              << ':' << std::setw(2) << s << '.' << std::setw(3) << n;
+    return os;
+}
 
 int main(int argc, char* argv[]) 
 {
@@ -2470,7 +2488,7 @@ int main(int argc, char* argv[])
     auto diaRes = res.finalResult();
     for( const auto& dr : diaRes )
     {
-        std::cout<<"[ "<<dr.start<<" --> "<<dr.end<<" ]"<<std::endl;
+        std::cout<<"[ "<<toHHMMSS( dr.start ).str()<<" --> "<<toHHMMSS(dr.end).str()<<" ]"<<std::endl;
     }
     std::cout<<"----------------------------------------------------"<<std::endl;
 }
