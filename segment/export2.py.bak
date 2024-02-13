@@ -1,0 +1,119 @@
+
+import torchaudio
+import torch
+import numpy as np
+from pyannote.audio.core.model import Model
+from hf_token import *
+import torchaudio
+import onnx
+import onnxruntime
+
+opsetVer = 17
+outModel = 'segment2.onnx'
+
+def export():
+    model =  Model.from_pretrained(
+            "pyannote/segmentation@2022.07",
+            strict=False,
+            use_auth_token=hf_auth_token,
+        )
+    model.eval()
+
+    # Create dummy input
+    #dummy_input = torch.zeros(3, 1, 32000)
+    #dummy_input = torch.zeros(32, 1, 80000)
+    dummy_input = torch.zeros(1, 1, 80000)
+
+    # Show all unconvertable ops, output would be like,
+    #       {'aten::view_as_real', 'aten::chunk', 'aten::stft'}
+    #torch_script_graph, unconvertible_ops = torch.onnx.utils.unconvertible_ops(
+    #    model, signal, opset_version=opsetVer
+    #)
+    #if( len( unconvertible_ops ) > 0 ):
+    #    print( '------------------------There are some unconvertable operations-----------' )
+    #    print(set(unconvertible_ops))
+    #    exit( 0 )
+    #print( '---- all operations convertable ----' )
+
+    # Export the model
+    print( '\n---- start export ----' )
+    #symbolic_names = {0: "batch_size", 1: "max_seq_len"}
+    symbolic_names = {0: "B", 1: "C", 2: "T"}
+    torch.onnx.export(model,               # model being run
+                      dummy_input,                         # model input (or a tuple for multiple inputs)
+                      outModel,   # where to save the model (can be a file or file-like object)
+                      export_params=True,        # store the trained parameter weights inside the model file
+                      opset_version=opsetVer,          # the ONNX version to export the model to
+                      do_constant_folding=True,  # whether to execute constant folding for optimization
+                      verbose=False,
+                      input_names = ['signal'],   # the model's input names
+                      output_names = ['segments'], # the model's output names
+                      dynamic_axes={'signal' : symbolic_names,    # variable length axes
+                                    })
+    print( f'---- model has been saved to {outModel} ----\n' )
+
+def verify():
+    print( '\n\n\n====================verify=======================' )
+    model =  Model.from_pretrained(
+            "pyannote/segmentation@2022.07",
+            strict=False,
+            use_auth_token=hf_auth_token,
+        )
+    model.eval()
+
+    onnx_model = onnx.load( outModel )
+    providers = ['CPUExecutionProvider']
+    so = onnxruntime.SessionOptions()
+    so.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
+    ort_session = onnxruntime.InferenceSession(onnx_model.SerializeToString(), so, providers=providers)
+
+    wavs = [
+            '/home/leo/storage/sharedFolderVirtualbox/audioForTesting/english_15s16k.wav',
+            ]
+
+
+    # Load wav
+    signal, fs = torchaudio.load( wavs[0] )
+    signal = signal[:160000]
+
+    # Calc using pytorch
+    #with torch.no_grad():
+    segments = model(signal)
+    segments1 = segments.detach().numpy()
+
+    # Calc embedding using onnx model
+    print( ort_session.get_inputs()[0])
+    signal = signal[None,:]
+    ort_inputs = {ort_session.get_inputs()[0].name: signal.numpy()}
+    ort_outs = ort_session.run(None, ort_inputs)
+    onnx_segments = ort_outs[0]
+
+    try:
+        # Check if result is close enough
+        np.testing.assert_allclose(
+                segments1, 
+                onnx_segments, 
+                rtol=1e-03, 
+                atol=1e-05,
+                verbose = True)
+        print( 'check passed' )
+    except AssertionError as e:
+        print( e )
+        print( onnx_segments[0] )
+    print( "-----------------------------" )
+
+
+def hints():
+    print( '\n\n\n====================note=======================' )
+    print( 'If you error like below' )
+    print('''
+            RuntimeError: cuDNN version incompatibility: PyTorch was compiled  against (8, 7, 0) but found runtime version (8, 6, 0). PyTorch already comes bundled with cuDNN. One option to resolving this error is to ensure PyTorch can find the bundled cuDNN.Looks like your LD_LIBRARY_PATH contains incompatible version of cudnnPlease either remove it from the path or install cudnn (8, 7, 0)
+            ''')
+    print( 'then execute following command' )
+    print( '$> unset LD_LIBRARY_PATH' )
+    print( '===============================================\n\n\n' )
+
+
+hints()
+export()
+verify()
