@@ -5,7 +5,7 @@ import numpy as np
 #checkList = ['batch_waveform','segmentations','batch_masks', 'wav_lens', 'signals', 'masks',
 checkList = ['before_aggregation', 'after_hook', 
         'aggregated_output', 'aggregated_mask', 'masks_in_aggregate',
-        'overlapping_chunk_count', 'after_aggregate' ]
+        'overlapping_chunk_count', 'after_aggregate', 'audio' ]
 
 def deleteSingle( item, source ):
         more = True
@@ -153,7 +153,7 @@ def checkResult():
     sameFileContentList = []
     closeEnoughList = ['before_aggregation','after_hook',
         'aggregated_output', 'aggregated_mask', 'masks_in_aggregate',
-        'overlapping_chunk_count', 'after_aggregate' ]
+        'overlapping_chunk_count', 'after_aggregate', 'audio' ]
     for item in checkList:
         print(f'\n======================================')
         print(f'======== CHECKING {item} =========')

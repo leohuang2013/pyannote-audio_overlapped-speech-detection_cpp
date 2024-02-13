@@ -25,6 +25,7 @@
 #include <chrono>
 #include <sstream>
 #include <optional>
+#include <unistd.h>
 
 #include "frontend/wav.h"
 
@@ -38,7 +39,7 @@
 
 #define SAMPLE_RATE 16000
 
-#define WRITE_DATA 1
+#define WRITE_DATA 0
 
 // python: min_num_samples = self._embedding.min_num_samples
 size_t min_num_samples = 640;
@@ -1261,7 +1262,7 @@ public:
         for( size_t i = 0; i < scores.size(); ++i )
         {
             size_t start_frame = frames.closest_frame( start );
-            std::cout<<"start_frame: "<<start_frame<<" with:"<<start<<std::endl;
+            //std::cout<<"start_frame: "<<start_frame<<" with:"<<start<<std::endl;
             start += scores_frames.step; // python: chunk.start
             for( size_t j = 0; j < num_frames_per_chunk; ++j )
             {
@@ -1383,9 +1384,7 @@ public:
     std::vector<std::vector<std::vector<float>>> infer( const std::vector<std::vector<float>>& waveform )
     {
         // Create a std::vector<float> with the same size as the tensor
-        //std::vector<float> audio( waveform.size() * waveform[0].size());
         std::vector<float> audio( m_batch_size * waveform[0].size(), 0.0 );
-        //for( size_t i = 0; i < waveform.size(); ++i )
         for( size_t i = 0; i < waveform.size(); ++i )
         {
             for( size_t j = 0; j < waveform[0].size(); ++j )
@@ -1393,6 +1392,7 @@ public:
                 audio[i*waveform[0].size() + j] = waveform[i][j];
             }
         }
+        usleep( 100000 );
 
         // batch_size * num_channels (1 for mono) * num_samples
         //const int64_t batch_size = waveform.size();
@@ -1461,11 +1461,11 @@ public:
             chunks.push_back( chunk ); 
             if( chunks.size() == m_batch_size )
             {
-#ifdef WRITE_DATA
-        //std::string tt = "cpp_audio";
-        //tt += std::to_string( idx++ );
-        //debugWrite2d( chunks, tt.c_str());
-#endif // WRITE_DATA
+//#ifdef WRITE_DATA
+//        std::string tt = "cpp_audio";
+//        tt += std::to_string( idx++ );
+//        debugWrite2d( chunks, tt.c_str());
+//#endif // WRITE_DATA
                 auto tmp = infer( chunks );
                 for( const auto& a : tmp )
                 {
@@ -1540,141 +1540,6 @@ public:
         return outputs;
     }
 
-    std::vector<std::vector<std::vector<double>>> binarize_swf(
-        const std::vector<std::vector<std::vector<float>>> scores,
-        bool initial_state = false ) 
-    {
-        double onset = m_diarization_segmentation_threashold;
-
-        // TODO: use hlper::rerange_down
-        // Imlemenation of einops.rearrange c f k -> (c k) f
-        int num_chunks = scores.size();
-        int num_frames = scores[0].size();
-        int num_classes = scores[0][0].size();
-        std::vector<std::vector<double>> data(num_chunks * num_classes, std::vector<double>(num_frames));
-        int rowNum = 0;
-        for ( const auto& row : scores ) 
-        {
-            // Create a new matrix with swapped dimensions
-            std::vector<std::vector<double>> transposed(num_classes, std::vector<double>(num_frames));
-
-            for (int i = 0; i < num_frames; ++i) {
-                for (int j = 0; j < num_classes; ++j) {
-                    data[rowNum * num_classes + j][i] = row[i][j];
-                }
-            }
-
-            rowNum++;
-        }
-        /*
-        for( const auto& d : data )
-        {
-            for( float e : d )
-            {
-                std::cout<<e<<",";
-            }
-            std::cout<<std::endl;
-        }
-        */
-
-        auto binarized = binarize_ndarray( data, onset, initial_state);
-
-        // TODO: use help::rerange_up
-        // Imlemenation of einops.rearrange (c k) f -> c f k - restore
-        std::vector<std::vector<std::vector<double>>> restored(num_chunks, 
-                std::vector<std::vector<double>>( num_frames, std::vector<double>(num_classes)));
-        rowNum = 0;
-        for( size_t i = 0; i < binarized.size(); i += num_classes )
-        {
-            for( size_t j = 0; j < num_classes; ++j )
-            {
-                for( size_t k = 0; k < num_frames; ++k )
-                {
-                    restored[rowNum][k][j] = binarized[i+j][k];
-                }
-            }
-            rowNum++;
-        }
-
-        return restored;
-    }
-
-    std::vector<std::vector<bool>> binarize_ndarray(
-        const std::vector<std::vector<double>>& scores,
-        double onset = 0.5,
-        bool initialState = false
-    ) {
-
-        // Scores shape like 2808x293
-        size_t rows = scores.size();
-        size_t cols = scores[0].size();
-
-        // python: on = scores > onset
-        // on is same shape as scores, with true or false inside
-        std::vector<std::vector<bool>> on( rows, std::vector<bool>( cols, false ));
-        for( size_t i = 0; i < rows; ++i )
-        {
-            for( size_t j = 0; j < cols; ++j )
-            {
-                if( scores[i][j] > onset )
-                    on[i][j] = true;
-            }
-        }
-
-        // python: off_or_on = (scores < offset) | on
-        // off_or_on is same shape as scores, with true or false inside
-        // Since onset and offset is same value, it should be true unless score[i][j] == onset
-        std::vector<std::vector<bool>> off_or_on( rows, std::vector<bool>( cols, true ));
-        for( size_t i = 0; i < rows; ++i )
-        {
-            for( size_t j = 0; j < cols; ++j )
-            {
-                if(abs( scores[i][j] - onset ) < std::numeric_limits<double>::epsilon())
-                    off_or_on[i][j] = false;
-            }
-        }
-
-        // python: # indices of frames for which the on/off state is well-defined
-        // well_defined_idx = np.array(
-        //     list(zip_longest(*[np.nonzero(oon)[0] for oon in off_or_on], fillvalue=-1))
-        // ).T
-        auto well_defined_idx = Helper::wellDefinedIndex( off_or_on );
-
-        // same_as same shape of as scores
-        // python: same_as = np.cumsum(off_or_on, axis=1)
-        auto same_as = Helper::cumulativeSum( off_or_on );
-
-        // python: samples = np.tile(np.arange(batch_size), (num_frames, 1)).T
-        std::vector<std::vector<int>> samples( rows, std::vector<int>( cols, 0 ));
-        for( size_t i = 0; i < rows; ++i )
-        {
-            for( size_t j = 0; j < cols; ++j )
-            {
-                samples[i][j] = i;
-            }
-        }
-
-        // create same shape of initial_state as scores.
-        std::vector<std::vector<bool>> initial_state( rows, std::vector<bool>( cols, initialState ));
-
-
-        // python: return np.where( same_as, on[samples, well_defined_idx[samples, same_as - 1]], initial_state)
-        // TODO: delete tmp, directly return
-#ifdef WRITE_DATA
-        debugWrite2d( scores, "cpp_binarize_score" );
-        debugWrite2d( same_as, "cpp_same_as" );
-        debugWrite2d( on, "cpp_on" );
-        debugWrite2d( well_defined_idx, "cpp_well_defined_idx" );
-        debugWrite2d( initial_state, "cpp_initial_state" );
-        debugWrite2d( samples, "cpp_samples" );
-#endif // WRITE_DATA
-        auto tmp = Helper::numpy_where( same_as, on, well_defined_idx, initial_state, samples );
-#ifdef WRITE_DATA
-        debugWrite2d( tmp, "cpp_binary_ndarray" );
-#endif // WRITE_DATA
-        return tmp;
-    }
-
     std::vector<float> crop( const std::vector<float>& waveform, std::pair<double, double> segment) 
     {
         int start_frame = static_cast<int>(std::floor(segment.first * m_sample_rate));
@@ -1696,126 +1561,6 @@ public:
         data.insert(data.end(), pad_end, 0.0);
 
         return data;
-    }
-
-    // pyannote/audio/pipelines/utils/diarization.py:108
-    std::vector<int> speaker_count( const std::vector<std::vector<std::vector<float>>>& segmentations,
-            const std::vector<std::vector<std::vector<double>>>& binarized,
-            const SlidingWindow& pre_frame,
-            SlidingWindow& count_frames,
-            int num_samples )
-    {
-        // Get frames first - python: self._frames
-        // step = (self.inc_num_samples / self.inc_num_frames) / sample_rate
-        // pyannote/audio/core/model.py:243
-        // currently cannot where where self.inc_num_samples / self.inc_num_frames from
-        //int inc_num_samples = 270; // <-- this may not be correct
-        //int inc_num_frames = 1; // <-- this may not be correct
-        //float step = ( inc_num_samples * 1.0f / inc_num_frames) / m_sample_rate;
-        //float window = step;
-        //std::vector<std::pair<float, float>> frames;
-        //float start = 0.0;
-        //while( true )
-        //{
-        //    start += step;
-        //    if( start * m_sample_rate >= num_samples )
-        //        break;
-        //    float end = start + window;
-        //    frames.emplace_back(std::make_pair<float, float>(start, end));
-        //}
-
-        // python: trimmed = Inference.trim
-        SlidingWindow trimmed_frames;
-        SlidingWindow frames( 0.0, m_step, m_duration );
-        auto trimmed = trim( binarized, 0.1, 0.1, frames, trimmed_frames );
-
-#ifdef WRITE_DATA
-        debugWrite3d( trimmed, "cpp_trimmed" );
-#endif // WRITE_DATA
-
-        // python: count = Inference.aggregate(
-        // python: np.sum(trimmed, axis=-1, keepdims=True)
-        std::vector<std::vector<std::vector<double>>> sum_trimmed( trimmed.size(), 
-                std::vector<std::vector<double>>( trimmed[0].size(), std::vector<double>( 1 )));
-        for( size_t i = 0; i < trimmed.size(); ++i )
-        {
-            for( size_t j = 0; j < trimmed[0].size(); ++j )
-            {
-                double sum = 0.0;
-                for( size_t k = 0; k < trimmed[0][0].size(); ++k )
-                {
-                    sum += trimmed[i][j][k];
-                }
-                sum_trimmed[i][j][0] = sum;
-            }
-        }
-#ifdef WRITE_DATA
-        debugWrite3d( sum_trimmed, "cpp_sum_trimmed" );
-#endif // WRITE_DATA
-       
-        auto count_data = PipelineHelper::aggregate( sum_trimmed, trimmed_frames, 
-                pre_frame, count_frames, false, 0.0, false );
-
-#ifdef WRITE_DATA
-        debugWrite2d( count_data, "cpp_count_data" );
-#endif // WRITE_DATA
-       
-        // count_data is Nx1, so we convert it to 1d array
-        assert( count_data[0].size() == 1 );
-
-        // python: count.data = np.rint(count.data).astype(np.uint8)
-        //std::vector<std::vector<int>> res( count_data.size(), std::vector<int>( count_data[0].size()));
-        std::vector<int> res( count_data.size());
-        for( size_t i = 0; i < res.size(); ++i )
-        {
-            res[i] = Helper::np_rint( count_data[i][0] );
-        }
-
-        return res;
-    }
-
-    // pyannote/audio/core/inference.py:540
-    // use after_trim_step, after_trim_duration to calc sliding_window later 
-    std::vector<std::vector<std::vector<double>>> trim(
-            const std::vector<std::vector<std::vector<double>>>& binarized, 
-            double left, double right, 
-            const SlidingWindow& before_trim, 
-            SlidingWindow& trimmed_frames )
-    {
-        double before_trim_start = before_trim.start;
-        double before_trim_step = before_trim.step;
-        double before_trim_duration = before_trim.duration;
-        size_t chunkSize = binarized.size();
-        size_t num_frames = binarized[0].size();
-
-        // python: num_frames_left = round(num_frames * warm_up[0])
-        size_t num_frames_left = floor(num_frames * left);
-
-        // python: num_frames_right = round(num_frames * warm_up[1])
-        size_t num_frames_right = floor(num_frames * right);
-        size_t num_frames_step = floor(num_frames * before_trim_step / before_trim_duration);
-
-        // python: new_data = scores.data[:, num_frames_left : num_frames - num_frames_right]
-        std::vector<std::vector<std::vector<double>>> trimed( binarized.size(), 
-                std::vector<std::vector<double>>((num_frames - num_frames_right - num_frames_left), 
-                std::vector<double>( binarized[0][0].size())));
-        for( size_t i = 0; i < binarized.size(); ++i )
-        {
-            for( size_t j = num_frames_left; j < num_frames - num_frames_right; ++j )
-            {
-                for( size_t k = 0; k < binarized[0][0].size(); ++k )
-                {
-                    trimed[i][j - num_frames_left][k] = binarized[i][j][k];
-                }
-            }
-        }
-
-        trimmed_frames.start = before_trim_start + left * before_trim_duration;
-        trimmed_frames.step = before_trim_step;
-        trimmed_frames.duration = ( 1 - left - right ) * before_trim_duration;
-        trimmed_frames.num_samples = num_frames - num_frames_right - num_frames_left;
-
-        return trimed;
     }
 
 }; // SegmentModel
@@ -1998,306 +1743,6 @@ std::vector<std::vector<T>> crop_segment( const std::vector<std::vector<T>>& dat
     }
 
     return cropped_data;
-}
-
-// pyannote/audio/pipelines/utils/diarization.py:187
-bool to_diarization( std::vector<std::vector<std::vector<double>>>& segmentations, 
-        const SlidingWindow& segmentations_frames,
-        const std::vector<int>& count,
-        const SlidingWindow& count_frames, 
-        SlidingWindow& to_diarization_frames,
-        std::vector<std::vector<double>>& binary)
-{
-    // python: activations = Inference.aggregate(...
-    SlidingWindow activations_frames;
-    auto activations = PipelineHelper::aggregate( segmentations, 
-            segmentations_frames, 
-            count_frames, 
-            activations_frames, 
-            false, 0.0, true );
-
-#ifdef WRITE_DATA
-    debugWrite2d( activations, "cpp_to_diarization_activations" );
-
-    /*
-    std::ifstream fd("/tmp/py_to_diarization_activations.txt"); //taking file as inputstream
-    int cnt = 0;
-    for( std::string line; getline( fd, line ); )
-    {
-        std::string delimiter = ",";
-        std::vector<std::string> v = Helper::split(line, delimiter);
-        v.pop_back();
-        for( size_t i = 0; i < v.size(); ++i )
-        {
-            activations[cnt][i] = std::stof( v[i] );
-        }
-        cnt++;
-    }
-    */
-#endif 
-
-    // python: _, num_speakers = activations.data.shape
-    size_t num_speakers = activations[0].size();
-
-    // python: count.data = np.minimum(count.data, num_speakers)
-    // here also convert 1d to 2d later need pass to crop_segment
-    std::vector<std::vector<int>> converted_count( count.size(), std::vector<int>( 1 ));
-    for( size_t i = 0; i < count.size(); ++i )
-    {
-        if( count[i] > num_speakers )
-            converted_count[i][0] = num_speakers;
-        else
-            converted_count[i][0] = count[i];
-    }
-
-    // python: extent = activations.extent & count.extent
-    // get extent then calc intersection, check extent() of 
-    // SlidingWindowFeature and __and__() of Segment
-    // Get activations.extent
-    double tmpStart = activations_frames.start + (0 - .5) * activations_frames.step + 
-        .5 * activations_frames.duration;
-    double duration = activations.size() * activations_frames.step;
-    double activations_end = tmpStart + duration;
-    double activations_start = activations_frames.start;
-
-    // Get count.extent
-    tmpStart = count_frames.start + (0 - .5) * count_frames.step + .5 * count_frames.duration;
-    duration = count.size() * count_frames.step;
-    double count_end = tmpStart + duration;
-    double count_start = count_frames.start;
-
-    // __and__(), max of start, min of end
-    double intersection_start = std::max( activations_start, count_start );
-    double intersection_end = std::min( activations_end, count_end );
-    Segment focus( intersection_start, intersection_end );
-    SlidingWindow cropped_activations_frames;
-    auto cropped_activations = crop_segment( activations, activations_frames, focus, 
-            cropped_activations_frames );
-
-    SlidingWindow cropped_count_frames;
-    auto cropped_count = crop_segment( converted_count, count_frames, focus, 
-            cropped_count_frames );
-
-#ifdef WRITE_DATA
-    debugWrite2d( cropped_activations, "cpp_cropped_activations" );
-    debugWrite2d( cropped_count, "cpp_cropped_count" );
-#endif // WRITE_DATA
-
-    // python: sorted_speakers = np.argsort(-activations, axis=-1)
-    std::vector<std::vector<int>> sorted_speakers( cropped_activations.size(),
-            std::vector<int>( cropped_activations[0].size()));
-    int ss_index = 0;
-    for( auto& a : cropped_activations )
-    {
-        // -activations
-        for( size_t i = 0; i < a.size(); ++i ) a[i] = -1.0 * a[i];
-        auto indices = Helper::argsort( a );
-        sorted_speakers[ss_index++].swap( indices );
-    }
-#ifdef WRITE_DATA
-    debugWrite2d( sorted_speakers, "cpp_sorted_speakers" );
-#endif // WRITE_DATA
-
-    assert( cropped_activations.size() > 0 );
-    assert( cropped_activations[0].size() > 0 );
-
-    // python: binary = np.zeros_like(activations.data)
-    binary.resize( cropped_activations.size(),
-        std::vector<double>( cropped_activations[0].size(), 0.0 ));
-
-    // python: for t, ((_, c), speakers) in enumerate(zip(count, sorted_speakers)):
-    // NOTE: here c is data of count, not sliding window, see __next__ of SlidingWindowFeature
-    // in python code
-    assert( cropped_count.size() <= sorted_speakers.size());
-
-    // following code based on this cropped_count is one column data, if not 
-    // need below code
-    assert( cropped_count[0].size() == 1 );
-    for( size_t i = 0; i < cropped_count.size(); ++i )
-    {
-        int k = cropped_count[i][0];
-        assert( k <= binary[0].size());
-        for( size_t j = 0; j < k; ++j )
-        {
-            assert( sorted_speakers[i][j] < cropped_count.size());
-            binary[i][sorted_speakers[i][j]] = 1.0f;
-        }
-    }
-
-    to_diarization_frames = cropped_activations_frames;
-
-    return true;
-}
-
-// np.max( segmentation[:, cluster == k], axis=1 )
-std::vector<float> max_segmentation_cluster(const std::vector<std::vector<float>>& segmentation,
-                                       const std::vector<int>& cluster, int k) 
-{
-    std::vector<float> maxValues( segmentation.size());
-
-    for (size_t i = 0; i < segmentation.size(); ++i) 
-    {
-        float maxValue = -std::numeric_limits<float>::infinity();
-        for (size_t j = 0; j < cluster.size(); ++j) 
-        {
-            if (cluster[j] == k) 
-            {
-                maxValue = std::max(maxValue, segmentation[i][j]);
-            }
-        }
-        maxValues[i] = maxValue;
-    }
-
-    return maxValues;
-}
-
-// pyannote/audio/pipelines/speaker_diarization.py:403, def reconstruct(
-std::vector<std::vector<double>> reconstruct( 
-        const std::vector<std::vector<std::vector<float>>>& segmentations,
-        const SlidingWindow& segmentations_frames,
-        const std::vector<std::vector<int>>& hard_clusters, 
-        const std::vector<int>& count_data,
-        const SlidingWindow& count_frames,
-        SlidingWindow& activations_frames)
-{
-    size_t num_chunks = segmentations.size();
-    size_t num_frames = segmentations[0].size();
-    size_t local_num_speakers = segmentations[0][0].size();
-
-    // python: num_clusters = np.max(hard_clusters) + 1
-    // Note, element in hard_clusters have negative number, don't define num_cluster as size_t
-    int num_clusters = 0;
-    for( size_t i = 0; i < hard_clusters.size(); ++i )
-    {
-        for( size_t j = 0; j < hard_clusters[0].size(); ++j )
-        {
-            if( hard_clusters[i][j] > num_clusters )
-                num_clusters = hard_clusters[i][j];
-        }
-    }
-    num_clusters++;
-    assert( num_clusters > 0 );
-
-    // python: for c, (cluster, (chunk, segmentation)) in enumerate(...
-    std::vector<std::vector<std::vector<double>>> clusteredSegmentations( num_chunks, 
-            std::vector<std::vector<double>>( num_frames, std::vector<double>( num_clusters, NAN)));
-    for( size_t i = 0; i < num_chunks; ++i ) 
-    {
-        const auto& cluster = hard_clusters[i];
-        const auto& segmentation = segmentations[i];
-        for( auto k : cluster )
-        {
-            if( abs( k + 2 ) < std::numeric_limits<double>::epsilon()) // check if it equals -2
-            {
-                continue;
-            }
-
-            auto max_sc = max_segmentation_cluster( segmentation, cluster, k );
-            assert( k < num_clusters );
-            assert( max_sc.size() > 0 );
-            assert( max_sc.size() == num_frames );
-            for( size_t m = 0; m < num_frames; ++m )
-            {
-                clusteredSegmentations[i][m][k] = max_sc[m];
-            }
-        }
-    }
-
-#ifdef WRITE_DATA
-    debugWrite3d( clusteredSegmentations, "cpp_clustered_segmentations" );
-#endif // 
-
-    std::vector<std::vector<double>> diarizationRes;
-    to_diarization( clusteredSegmentations, segmentations_frames, 
-            count_data, count_frames, activations_frames, diarizationRes );
-    return diarizationRes;
-}
-
-
-// pyannote/audio/pipelines/utils/diarization.py:155
-Annotation to_annotation( const std::vector<std::vector<double>>& scores,
-        const SlidingWindow& frames,
-        double onset, double offset, 
-        double min_duration_on, double min_duration_off)
-{
-    // call binarize : pyannote/audio/utils/signal.py: 287
-    size_t num_frames = scores.size();
-    size_t num_classes = scores[0].size();
-
-    // python: timestamps = [frames[i].middle for i in range(num_frames)]
-    std::vector<double> timestamps( num_frames );
-    for( size_t i = 0; i < num_frames; ++i )
-    {
-        double start = frames.start + i * frames.step;
-        double end = start + frames.duration;
-        timestamps[i] = ( start + end ) / 2;
-    }
-
-    // python: socre.data.T
-    std::vector<std::vector<double>> inversed( num_classes, std::vector<double>( num_frames ));
-    for( size_t i = 0; i < num_frames; ++i )
-    {
-        for( size_t j = 0; j < num_classes; ++j )
-        {
-            inversed[j][i] = scores[i][j];
-        }
-    }
-
-    Annotation active;
-    double pad_onset = 0.0;
-    double pad_offset = 0.0;
-    for( size_t i = 0; i< num_classes; ++i )
-    {
-        int label = i;
-        double start = timestamps[0];
-        bool is_active = false;
-        if( inversed[i][0] > onset )
-        {
-            is_active = true;
-        }
-        for( size_t j = 1; j < num_frames; ++j )
-        {
-            // currently active
-            if( is_active )
-            {
-                // switching from active to inactive
-                if( inversed[i][j] < offset )
-                {
-                    Segment region(start - pad_onset, timestamps[j] + pad_offset);
-                    active.addSegment(region.start, region.end, label);
-                    start = timestamps[j];
-                    is_active = false;
-                }
-            }
-            else
-            {
-                if( inversed[i][j] > onset )
-                {
-                    start = timestamps[j];
-                    is_active = true;
-                }
-            }
-        }
-
-        if( is_active )
-        {
-            Segment region(start - pad_onset, timestamps.back() + pad_offset);
-            active.addSegment(region.start, region.end, label);
-        }
-    }
-
-    // because of padding, some active regions might be overlapping: merge them.
-    // also: fill same speaker gaps shorter than min_duration_off
-    if( pad_offset > 0.0 || pad_onset > 0.0  || min_duration_off > 0.0 )
-        active.support( min_duration_off );
-
-    // remove tracks shorter than min_duration_on
-    if( min_duration_on > 0 )
-    {
-        active.removeShort( min_duration_on );
-    }
-
-    return active;
 }
 
 Annotation detectOverlappedSpeech( const std::string& waveFile, const std::string& segmentModel )
