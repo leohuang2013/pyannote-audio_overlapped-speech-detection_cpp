@@ -6,10 +6,10 @@ Whole pipeline is splitted into 2 stages,
 - segment
 - binarize
 
-## Segment,
+<ins>**Segment**</ins><br>
 Export segmentation model from python which is later used to do inference in C++ with onnxruntime. 
 
-## Binarize
+<ins>**Binarize**</ins><br>
 Convert all python code to C++ code.
 
 # Model 
