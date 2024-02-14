@@ -1369,13 +1369,15 @@ private:
     double m_step = 0.5;
     int m_batch_size = 32;
     int m_sample_rate = 16000;
-    double m_diarization_segmentation_threashold = 0.4442333667381752;
     size_t m_num_samples = 0;
+    bool m_runOnGPU = false;
 
 
 public:
-    SegmentModel(const std::string& model_path)
-        : OnnxModel(model_path) {
+    SegmentModel(const std::string& model_path, bool runOnGPU)
+        : OnnxModel(model_path, runOnGPU) 
+        , m_runOnGPU( runOnGPU )
+    {
     }
 
 
@@ -1384,15 +1386,27 @@ public:
     std::vector<std::vector<std::vector<float>>> infer( const std::vector<std::vector<float>>& waveform )
     {
         // Create a std::vector<float> with the same size as the tensor
+        // TODO: do memory copy for better performance, Maybe use pointer only rather than stl container
         std::vector<float> audio( m_batch_size * waveform[0].size(), 0.0 );
         for( size_t i = 0; i < waveform.size(); ++i )
-        {
+        {   
             for( size_t j = 0; j < waveform[0].size(); ++j )
-            {
+            {   
                 audio[i*waveform[0].size() + j] = waveform[i][j];
-            }
+            }   
+        }   
+
+        if( m_runOnGPU )
+        {
+            // ??? stupid but workable sleep here
+            // without it, output is wrong
+            // if sleep 10 milliseconds, we got
+            // Mismatched elements: 1 / 1096992 (9.12e-05%) if run 
+            // python verifyEveryStepResult.py for before_aggregation
+            // and final result exact same.
+            // if sleep less than 10 milliseconds, got more mismatch
+            usleep( 100000 );
         }
-        usleep( 100000 );
 
         // batch_size * num_channels (1 for mono) * num_samples
         //const int64_t batch_size = waveform.size();
@@ -1406,6 +1420,9 @@ public:
         std::vector<Ort::Value> ort_inputs;
         ort_inputs.emplace_back(std::move(input_ort));
 
+        // TODO: Call Run with user provided buffer to avoid extra memory copy
+        // see Run signature in 
+        // https://onnxruntime.ai/docs/api/c/struct_ort_1_1_session.html
         auto ort_outputs = session_->Run(
                 Ort::RunOptions{nullptr}, input_node_names_.data(), ort_inputs.data(),
                 ort_inputs.size(), output_node_names_.data(), output_node_names_.size());
@@ -1480,31 +1497,23 @@ public:
         // Process remaining chunks
         if( chunks.size() > 0 )
         {
-            auto tmp = infer( chunks );
-            for( const auto& a : tmp )
+            // Process last chunk if have, last chunk may not equal window_size
+            // Make sure at least we have 1 element remaining
+            if( i + 1 < num_samples )
             {
-                outputs.push_back( a );
+                has_last_chunk = true;
+                // Starting and Ending iterators
+                auto start = waveform.begin() + i;
+                auto end = waveform.end();
+
+                // To store the sliced vector, always window_size, for last chunk we pad with 0.0
+                std::vector<float> chunk( window_size, 0.0 );
+
+                // Copy vector using copy function()
+                std::copy(start, end, chunk.begin());
+                chunks.push_back( chunk ); 
             }
-            chunks.clear();
-        }
-
-        // Process last chunk if have, last chunk may not equal window_size
-        // Make sure at least we have 1 element remaining
-        if( i + 1 < num_samples )
-        {
-            has_last_chunk = true;
-            // Starting and Ending iterators
-            auto start = waveform.begin() + i;
-            auto end = waveform.end();
-
-            // To store the sliced vector, always window_size, for last chunk we pad with 0.0
-            std::vector<float> chunk( window_size, 0.0 );
-
-            // Copy vector using copy function()
-            std::copy(start, end, chunk.begin());
-            chunks.push_back( chunk ); 
             auto tmp = infer( chunks );
-            assert( tmp.size() == 1 );
             for( const auto& a : tmp )
             {
                 outputs.push_back( a );
@@ -1745,7 +1754,7 @@ std::vector<std::vector<T>> crop_segment( const std::vector<std::vector<T>>& dat
     return cropped_data;
 }
 
-Annotation detectOverlappedSpeech( const std::string& waveFile, const std::string& segmentModel )
+Annotation detectOverlappedSpeech( const std::string& waveFile, const std::string& segmentModel, bool runOnGPU )
 {
     wav::WavReader wav_reader( waveFile );
     int num_channels = wav_reader.num_channels();
@@ -1766,7 +1775,7 @@ Annotation detectOverlappedSpeech( const std::string& waveFile, const std::strin
     //*************************************
     auto beg_seg = timeNow();
     std::cout<<"\n---segmentation ---"<<std::endl;
-    SegmentModel mm( segmentModel );
+    SegmentModel mm( segmentModel, runOnGPU );
     std::vector<std::pair<double, double>> segments;
     SlidingWindow res_frames;
     bool has_last_chunk = false;
@@ -1812,6 +1821,8 @@ Annotation detectOverlappedSpeech( const std::string& waveFile, const std::strin
     debugWrite2d( activations, "cpp_after_aggregate" );
 #endif // WRITE_DATA
 
+    // Those hard code number from config file which was used during traning stage
+    // https://huggingface.co/pyannote/overlapped-speech-detection/blob/main/config.yaml
     float onset = 0.8104268538848918;
     float offset = 0.4806866463041527;
     float min_duration_off = 0.09791355693027545;
@@ -1912,6 +1923,16 @@ std::stringstream toHHMMSS( float ms )
     return os;
 }
 
+void printRunInfo( const char* model, const char* wavFile, bool runOnGPU )
+{
+    std::cout<<"----------------------------------------------------"<<std::endl;
+    std::cout<<"Model file: "<<model<<std::endl;
+    std::cout<<"Wav file: "<<wavFile<<std::endl;
+    std::cout<<"Run inference on: "<<(runOnGPU?"GPU":"CPU")<<std::endl;
+    std::cout<<"----------------------------------------------------"<<std::endl;
+    std::cout<<std::endl;
+}
+
 int main(int argc, char* argv[]) 
 {
     //test();
@@ -1925,7 +1946,11 @@ int main(int argc, char* argv[])
     auto beg = timeNow();
     std::string segmentModel( argv[1] );
     std::string waveFile( argv[2] );
-    auto res = detectOverlappedSpeech( waveFile, segmentModel );
+    bool runOnGPU = false;
+    if( argc == 4 && strcasecmp( argv[3], "GPU" ) == 0 )
+        runOnGPU = true;
+    printRunInfo( argv[1], argv[2], runOnGPU );
+    auto res = detectOverlappedSpeech( waveFile, segmentModel, runOnGPU );
 
     std::cout<<"\n----Summary----"<<std::endl;
     timeCost( beg, "Time cost" );

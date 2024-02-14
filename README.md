@@ -51,9 +51,15 @@ $> make
 ```
 
 # Run
+- run on CPU
 ```
 $> ./olSpeechDetection [model] [wav file] 
 $> ./olSpeechDetection ../model/segment.onnx ../data/multi-speaker_4-speakers_Jennifer_Aniston_and_Adam_Sandler_talk.wav
+```
+- run on GPU
+```
+$> ./olSpeechDetection [model] [wav file] GPU
+$> ./olSpeechDetection ../model/segment.onnx ../data/multi-speaker_4-speakers_Jennifer_Aniston_and_Adam_Sandler_talk.wav GPU
 ```
 
 # Result
@@ -192,16 +198,14 @@ $> ./olSpeechDetection ../model/segment.onnx ../data/multi-speaker_4-speakers_Je
 </table>
 </pre>
 
-# onnxruntime to GPU
-It seems no need change code, instead set cuda when convert to model. For segment.onnx model, change source 
-a) add following line to model = ....
-model.cuda() 
-b) change 
-dummy_input = torch.zeros(3, 1, 32000)
--->
-dummy_input = torch.zeros(3, 1, 32000).cuda()
+# Issues
+For running on GPU, there is 10 milliseconds 'sleep' before every inference. If not, the final result will be inaccurate.
+Note, this does not apply to running on CPU.
+Take a wave file with 7+ minutes duration, will increase total delay: 28 * 10 = 280 milliseconds.
 
-change onnx.cmake to download gpu version of onnxruntime
+# Performance
+The code is not fully optimized and some memory leaks there( see comment in code ).
+There are many STL container copy, one way to avoid this simply use pure pointer, for example for audio data and inference result.
 
 # Verification
 Since whole project is to translate pyannote-audio speaker diarization pipleline from python to C++, strategy I adopted here is 

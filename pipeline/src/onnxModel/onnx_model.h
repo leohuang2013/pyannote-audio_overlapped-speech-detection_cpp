@@ -11,7 +11,7 @@ class OnnxModel
 {
     public:
         void InitEngineThreads(int num_threads = 1);
-        OnnxModel(const std::string& model_path);
+        OnnxModel(const std::string& model_path, bool runOnGPU);
 
     protected:
         static Ort::Env env_;

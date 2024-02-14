@@ -39,7 +39,7 @@ static std::wstring toWString(const std::string& str)
     return wstr;
 }
 
-OnnxModel::OnnxModel(const std::string& model_path) 
+OnnxModel::OnnxModel(const std::string& model_path, bool runOnGPU) 
 {
     InitEngineThreads(1);
 
@@ -57,16 +57,19 @@ OnnxModel::OnnxModel(const std::string& model_path)
     static bool init = false;
     if( !init )
     {
-        // C++ way, but cannot find AppendExecutionProvider_CPU
-        //OrtCUDAProviderOptions cuda_options;
-        //cuda_options.device_id = 0;
-        //session_options_.AppendExecutionProvider_CUDA(cuda_options);
-        //session_options_.AppendExecutionProvider_CPU( 0 );
+        if( runOnGPU )
+        {
+            // C++ way, but cannot find AppendExecutionProvider_CPU
+            //OrtCUDAProviderOptions cuda_options;
+            //cuda_options.device_id = 0;
+            //session_options_.AppendExecutionProvider_CUDA(cuda_options);
+            //session_options_.AppendExecutionProvider_CPU( 0 );
 
-        // C API way
-        OrtStatus* status = OrtSessionOptionsAppendExecutionProvider_CUDA(session_options_, 0);
-        std::vector<std::string> providers = Ort::GetAvailableProviders();
-        status = OrtSessionOptionsAppendExecutionProvider_CPU( session_options_, 0 );
+            // C API way
+            OrtStatus* status = OrtSessionOptionsAppendExecutionProvider_CUDA(session_options_, 0);
+            std::vector<std::string> providers = Ort::GetAvailableProviders();
+            status = OrtSessionOptionsAppendExecutionProvider_CPU( session_options_, 0 );
+        }
 
         init = true;
     }
