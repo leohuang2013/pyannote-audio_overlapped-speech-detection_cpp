@@ -16,7 +16,9 @@ Convert all python code to C++ code.
 
 ## Export model
 - segmenation
-segment/export3.py
+
+script: segment/export3.py
+
 Above script will export model and verify model using example wav data.
 
 Create conda evironment or use python venv module.
